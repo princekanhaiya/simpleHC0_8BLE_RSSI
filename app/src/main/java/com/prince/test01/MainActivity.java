@@ -11,35 +11,49 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
-import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.DashPathEffect;
+import android.graphics.Paint;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
-import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
-import android.widget.Button;
-import android.widget.ImageView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.Iterator;
+import com.jjoe64.graphview.GraphView;
+import com.jjoe64.graphview.GridLabelRenderer;
+import com.jjoe64.graphview.LegendRenderer;
+import com.jjoe64.graphview.helper.StaticLabelsFormatter;
+import com.jjoe64.graphview.series.DataPoint;
+import com.jjoe64.graphview.series.LineGraphSeries;
+
+import java.io.Serializable;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Objects;
-import java.util.concurrent.RunnableFuture;
 
 import static android.content.ContentValues.TAG;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
-    private static final long SCAN_PERIOD = 2000 ;
+    private static final long SCAN_PERIOD = 2000;
     public BluetoothAdapter mBluetoothAdapter;
     private Handler mHandler;
-    private  int rssi_update=0;
+    private int rssi_update = 0;
     String[] Permission = {"android.permission.ACCESS_COARSE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.READ_EXTERNAL_STORAGE"};
 
-    MovingAverage mMovingAverage=new MovingAverage(5);
+    LineGraphSeries<DataPoint> seriesExactRSSI = new LineGraphSeries<DataPoint>();
+    LineGraphSeries<DataPoint> seriesMovingRSSI = new LineGraphSeries<DataPoint>();
+    LineGraphSeries<DataPoint> seriesKalmanRSSI = new LineGraphSeries<DataPoint>();
+    double x = 0, y_exact,y_moving,y_kalman;
+
+    MovingAverage mMovingAverage = new MovingAverage(4);
+
+    private static final double KALMAN_R = 0.125d;
+    private static final double KALMAN_Q = 0.5d;
+    private KalmanFilter mKalmanFilter = new KalmanFilter(KALMAN_R, KALMAN_Q); // init Kalman Filter
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -48,9 +62,6 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
         findViewById(R.id.button_scan).setOnClickListener(this);
         findViewById(R.id.button_stop).setOnClickListener(this);
-        findViewById(R.id.tv_display).setOnClickListener(this);
-
-
 
         if (!hasPermissions(this, this.Permission)) {
             ActivityCompat.requestPermissions(this, this.Permission, 4);
@@ -67,9 +78,85 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             Toast.makeText(this, "BLE not supported", Toast.LENGTH_SHORT).show();
             finish();
         }
-        Log.i(TAG, "Current Thread On create "+Thread.currentThread().getId());
+        Log.i(TAG, "Current Thread On create " + Thread.currentThread().getId());
+
+        GraphView graph = (GraphView) findViewById(R.id.graph1);
+        // styling grid/labels
+        //graph.getGridLabelRenderer().setGridColor(Color.RED);
+        //graph.getGridLabelRenderer().setHighlightZeroLines(false);
+        //graph.getGridLabelRenderer().setHorizontalLabelsColor(Color.GREEN);
+        //graph.getGridLabelRenderer().setVerticalLabelsColor(Color.RED);
+        //graph.getGridLabelRenderer().setVerticalLabelsVAlign(GridLabelRenderer.VerticalLabelsVAlign.ABOVE);
+        //graph.getGridLabelRenderer().setGridStyle(GridLabelRenderer.GridStyle.HORIZONTAL);
+        //graph.getGridLabelRenderer().reloadStyles();
+
+        // styling viewport
+        //graph.getViewport().setBackgroundColor(Color.argb(255, 222, 222, 222));
+        //graph.getViewport().setDrawBorder(true);
+        //graph.getViewport().setBorderColor(Color.RED);
+
+        // styling grid/labels
+        graph.getGridLabelRenderer().setHighlightZeroLines(false);
+        graph.getGridLabelRenderer().setVerticalLabelsAlign(Paint.Align.LEFT);
+        graph.getGridLabelRenderer().setLabelVerticalWidth(50);
+        graph.getGridLabelRenderer().setTextSize(30);
+        graph.getGridLabelRenderer().setGridStyle(GridLabelRenderer.GridStyle.BOTH);
+        graph.getGridLabelRenderer().setHorizontalLabelsAngle(120);
+        graph.getGridLabelRenderer().reloadStyles();
+
+        // styling series
+        seriesExactRSSI.setTitle("Exact RSSI");
+        seriesExactRSSI.setColor(Color.RED);
+        seriesExactRSSI.setDrawDataPoints(true);
+        seriesExactRSSI.setDataPointsRadius(6);
+        seriesExactRSSI.setThickness(5);
+
+        seriesMovingRSSI.setTitle("Moving RSSI");
+        seriesMovingRSSI.setColor(Color.BLACK);
+        seriesMovingRSSI.setDrawDataPoints(true);
+        seriesMovingRSSI.setDataPointsRadius(6);
+        seriesMovingRSSI.setThickness(5);
+
+        seriesKalmanRSSI.setTitle("Kalman RSSI");
+        seriesKalmanRSSI.setColor(Color.BLUE);
+        seriesKalmanRSSI.setDrawDataPoints(true);
+        seriesKalmanRSSI.setDataPointsRadius(6);
+        seriesKalmanRSSI.setThickness(5);
+
+        // styling legend
+        graph.getLegendRenderer().setVisible(true);
+        graph.getLegendRenderer().setTextSize(25);
+        graph.getLegendRenderer().setBackgroundColor(Color.argb(150, 50, 0, 0));
+        graph.getLegendRenderer().setTextColor(Color.WHITE);
+        //graph.getLegendRenderer().setAlign(LegendRenderer.LegendAlign.BOTTOM);
+        //graph.getLegendRenderer().setMargin(10);
+        graph.getLegendRenderer().setFixedPosition(5, 635);
+
+        graph.addSeries(seriesExactRSSI);
+        graph.addSeries(seriesMovingRSSI);
+        graph.addSeries(seriesKalmanRSSI);
+
+        graph.setTitle("RSSI Plot in dB");
+        graph.setTitleTextSize(50);
+
+        // set manual X bounds
+        graph.getViewport().setXAxisBoundsManual(true);
+        graph.getViewport().setMinX(0);
+        graph.getViewport().setMaxX(20);
+
+        // enable scrolling
+        graph.getViewport().setScrollable(true);
+
+
+//        // use static labels for horizontal and vertical labels
+//        StaticLabelsFormatter staticLabelsFormatter = new StaticLabelsFormatter(graph);
+//        staticLabelsFormatter.setHorizontalLabels(new String[] {"old", "middle", "new"});
+//        staticLabelsFormatter.setVerticalLabels(new String[] {"low", "middle", "high"});
+//        graph.getGridLabelRenderer().setLabelFormatter(staticLabelsFormatter);
+
 
     }
+
 
     private final ScanCallback mLeScanCallback = new ScanCallback() {
         @Override
@@ -83,12 +170,29 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     if (myBLEModuleDevice != null) {
                         Log.i("PRINCE", result.toString());
                         rssi_update = result.getRssi();
-                        TextView mtvdisplay = findViewById(R.id.tv_display);
-                        mtvdisplay.post(new Runnable() {
+                        TextView mtvdisplay1 = findViewById(R.id.tv_display1);
+                        TextView mtvdisplay2 = findViewById(R.id.tv_display2);
+                        TextView mtvdisplay3 = findViewById(R.id.tv_display3);
+                        GraphView graph = (GraphView) findViewById(R.id.graph1);
+
+                        mHandler.post(new Runnable() {
                             @Override
                             public void run() {
-                                mtvdisplay.setText(String.valueOf(rssi_update));
-                                mtvdisplay.setText("RSSI: "+String.valueOf(mMovingAverage.next(rssi_update)+"dB"));
+                                mtvdisplay1.setText(String.format("Exact  RSSI:%sdB", String.valueOf(rssi_update)));
+                                mtvdisplay2.setText(String.format("Moving RSSI:%s", String.valueOf(mMovingAverage.next(rssi_update) + "dB")));
+                                mtvdisplay3.setText(String.format("Kalman RSSI:%s", String.valueOf((int) mKalmanFilter.applyFilter(rssi_update) + "dB")));
+
+                                x = x + 0.5;
+                                y_exact = -rssi_update;
+                                y_moving = -mMovingAverage.next(rssi_update);
+                                y_kalman = -(int) mKalmanFilter.applyFilter(rssi_update);
+
+                                seriesExactRSSI.appendData(new DataPoint(x, y_exact), true, 1000);
+                                seriesMovingRSSI.appendData(new DataPoint(x, y_moving), true, 1000);
+                                seriesKalmanRSSI.appendData(new DataPoint(x, y_kalman), true, 1000);
+                                graph.addSeries(seriesExactRSSI);
+                                graph.addSeries(seriesMovingRSSI);
+                                graph.addSeries(seriesKalmanRSSI);
                             }
                         });
                     }
@@ -105,7 +209,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         @Override
         public void onScanFailed(int errorCode) {
             super.onScanFailed(errorCode);
-            Log.i("PRINCE", "Error"+errorCode);
+            Log.i("PRINCE", "Error" + errorCode);
         }
     };
 
@@ -139,15 +243,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         switch (v.getId()) {
             case R.id.button_scan:
                 showMessage("Scan Button");
-                Log.i(TAG, "Current Thread on button click "+Thread.currentThread().getId());
+                Log.i(TAG, "Current Thread on button click " + Thread.currentThread().getId());
                 scanLeDevice(true);
                 break;
             case R.id.button_stop:
                 showMessage("Stop Button");
                 scanLeDevice(false);
                 break;
-            case R.id.tv_display:
-                showMessage("Text View");
         }
     }
 
@@ -161,12 +263,16 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         return true;
     }
+
     //moving average for RSSI data
     static class MovingAverage {
         double sum;
         int windowSize;
         LinkedList<Integer> list;
-        /** Initialize your data structure here. */
+
+        /**
+         * Initialize your data structure here.
+         */
         public MovingAverage(int windowSize) {
             this.list = new LinkedList<>();
             this.windowSize = windowSize;
@@ -175,11 +281,95 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         public int next(int val) {
             sum += val;
             list.offer(val);
-            if(list.size()<=windowSize){
-                return (int) sum/list.size();
+            if (list.size() <= windowSize) {
+                return (int) sum / list.size();
             }
             sum -= list.poll();
-            return (int) sum/windowSize;
+            return (int) sum / windowSize;
+        }
+    }
+
+    //Kalman's filter
+    private static class KalmanFilter implements Serializable {
+
+        private double R;   //  Process Noise
+        private double Q;   //  Measurement Noise
+        private double A;   //  State Vector
+        private double B;   //  Control Vector
+        private double C;   //  Measurement Vector
+
+        private Double x;   //  Filtered Measurement Value (No Noise)
+        private double cov; //  Covariance
+
+        public KalmanFilter(double r, double q, double a, double b, double c) {
+            R = r;
+            Q = q;
+            A = a;
+            B = b;
+            C = c;
+        }
+
+        public KalmanFilter(double r, double q) {
+            R = r;
+            Q = q;
+            A = 1;
+            B = 0;
+            C = 1;
+        }
+
+        /**
+         * Public Methods
+         **/
+        public double applyFilter(double rssi) {
+            return applyFilter(rssi, 0.0d);
+        }
+
+        /**
+         * Filters a measurement
+         *
+         * @param measurement The measurement value to be filtered
+         * @param u           The controlled input value
+         * @return The filtered value
+         */
+        public double applyFilter(double measurement, double u) {
+            double predX;           //  Predicted Measurement Value
+            double K;               //  Kalman Gain
+            double predCov;         //  Predicted Covariance
+            if (x == null) {
+                x = (1 / C) * measurement;
+                cov = (1 / C) * Q * (1 / C);
+            } else {
+                predX = predictValue(u);
+                predCov = getUncertainty();
+                K = predCov * C * (1 / ((C * predCov * C) + Q));
+                x = predX + K * (measurement - (C * predX));
+                cov = predCov - (K * C * predCov);
+            }
+            return x;
+        }
+
+        /**
+         * Private Methods
+         **/
+        private double predictValue(double control) {
+            return (A * x) + (B * control);
+        }
+
+        private double getUncertainty() {
+            return ((A * cov) * A) + R;
+        }
+
+        @Override
+        public String toString() {
+            return "KalmanFilter{" +
+                    "R=" + R +
+                    ", Q=" + Q +
+                    ", A=" + A +
+                    ", B=" + B +
+                    ", C=" + C +
+                    ", x=" + x +
+                    ", cov=" + cov +
+                    '}';
         }
     }
 }
