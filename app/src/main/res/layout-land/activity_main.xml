@@ -8,8 +8,8 @@
 
     <com.jjoe64.graphview.GraphView
         android:id="@+id/graph1"
-        android:layout_width="match_parent"
-        android:layout_height="373dp"
+        android:layout_width="373dp"
+        android:layout_height="match_parent"
         android:layout_margin="4dp"
         android:background="#EFEFEF"
         app:layout_constraintBottom_toBottomOf="parent"
@@ -20,14 +20,14 @@
         app:layout_constraintVertical_bias="0.0" />
 
     <GridLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_width="wrap_content"
+        android:layout_height="match_parent"
         android:columnCount="2"
         android:rowCount="4"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@+id/graph1">
+        app:layout_constraintStart_toEndOf="@+id/graph1"
+        app:layout_constraintTop_toTopOf="parent">
 
         <TextView
             android:id="@+id/tv_display1"
@@ -68,11 +68,10 @@
 
         <Button
             android:id="@+id/button_scan"
-            android:layout_width="150dp"
+            android:layout_width="100dp"
             android:layout_height="wrap_content"
             android:layout_row="3"
             android:layout_column="0"
-            android:layout_marginStart="20dp"
             android:layout_gravity="center_vertical"
             android:text="SCAN" />
 
@@ -82,7 +81,6 @@
             android:layout_height="wrap_content"
             android:layout_row="3"
             android:layout_column="1"
-            android:layout_margin="20dp"
             android:layout_gravity="center"
             android:text="STOP" />
 
@@ -95,10 +93,10 @@
             android:layout_gravity="center"
             android:hint="Window Size"
             android:inputType="number"
-            android:padding="10dp"
             android:maxEms="12"
             android:maxLength="2"
             android:minEms="2"
+            android:padding="10dp"
             android:text="20"
             android:textAlignment="center"
             android:textColorHint="#A5A2A2" />

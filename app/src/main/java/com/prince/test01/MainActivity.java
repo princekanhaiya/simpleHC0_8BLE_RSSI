@@ -1,7 +1,9 @@
 package com.prince.test01;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
@@ -12,7 +14,9 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.DashPathEffect;
@@ -21,6 +25,7 @@ import android.graphics.Point;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.os.PersistableBundle;
 import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
@@ -77,15 +82,29 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         findViewById(R.id.button_scan).setOnClickListener(this);
         findViewById(R.id.button_stop).setOnClickListener(this);
 
-        if (!hasPermissions(this, this.Permission)) {
-            ActivityCompat.requestPermissions(this, this.Permission, 4);
-        }
+         if (!hasPermissions(this, Permission)) {
+             ActivityCompat.requestPermissions(this, Permission, 4);
+         }
+         // Check if the current mobile phone supports ble Bluetooth, if not, exit the program
+         if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
+             Toast.makeText(this, "BLE not supported", Toast.LENGTH_SHORT).show();
+             finish();
+         }
+         // Initializes Bluetooth adapter.
+         mBluetoothAdapter = ((BluetoothManager) Objects.requireNonNull(getSystemService(BLUETOOTH_SERVICE))).getAdapter();
+        /*Ensures Bluetooth is available on the device and it is enabled. If not,
+        displays a dialog requesting user permission to enable Bluetooth.*/
+         if (mBluetoothAdapter == null || !mBluetoothAdapter.isEnabled()) {
+             Log.i("BLE", "No BLE ??");
+             startActivityForResult(new Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE), 1);
+         }
 
         mHandler = new Handler(getApplicationContext().getMainLooper());
         if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_BLUETOOTH_LE)) {
             Toast.makeText(this, "BLE not supported", Toast.LENGTH_SHORT).show();
             finish();
         }
+
 
         mBluetoothAdapter = ((BluetoothManager) Objects.requireNonNull(getSystemService(BLUETOOTH_SERVICE))).getAdapter();
         if (this.mBluetoothAdapter == null) {
@@ -430,4 +449,5 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         }
         return super.dispatchTouchEvent(ev);
     }
+
 }
