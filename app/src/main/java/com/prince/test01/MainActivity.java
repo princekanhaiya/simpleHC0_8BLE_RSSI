@@ -3,6 +3,7 @@ package com.prince.test01;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 
+import android.app.Activity;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothManager;
@@ -12,14 +13,21 @@ import android.bluetooth.le.ScanRecord;
 import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
+import android.graphics.Point;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.util.DisplayMetrics;
 import android.util.Log;
+import android.view.Display;
+import android.view.MotionEvent;
 import android.view.View;
+import android.view.inputmethod.InputMethodManager;
+import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -37,11 +45,17 @@ import java.util.Objects;
 
 import static android.content.ContentValues.TAG;
 
+import static android.icu.lang.UCharacter.IndicPositionalCategory.BOTTOM_AND_RIGHT;
+import static android.icu.lang.UCharacter.IndicPositionalCategory.TOP;
+import static androidx.constraintlayout.widget.ConstraintProperties.LEFT;
+import static androidx.constraintlayout.widget.ConstraintProperties.BOTTOM;
+
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
     private static final long SCAN_PERIOD = 2000;
     public BluetoothAdapter mBluetoothAdapter;
     private Handler mHandler;
-    private int rssi_update = 0;
+    private int rssi_update = -20;
+    int windowsize=1;
     String[] Permission = {"android.permission.ACCESS_COARSE_LOCATION", "android.permission.WRITE_EXTERNAL_STORAGE", "android.permission.READ_EXTERNAL_STORAGE"};
 
     LineGraphSeries<DataPoint> seriesExactRSSI = new LineGraphSeries<DataPoint>();
@@ -49,13 +63,13 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     LineGraphSeries<DataPoint> seriesKalmanRSSI = new LineGraphSeries<DataPoint>();
     double x = 0, y_exact,y_moving,y_kalman;
 
-    MovingAverage mMovingAverage = new MovingAverage(4);
+    MovingAverage mMovingAverage = new MovingAverage(windowsize);
 
     private static final double KALMAN_R = 0.125d;
     private static final double KALMAN_Q = 0.5d;
     private KalmanFilter mKalmanFilter = new KalmanFilter(KALMAN_R, KALMAN_Q); // init Kalman Filter
 
-    @Override
+     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
@@ -101,36 +115,36 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         graph.getGridLabelRenderer().setLabelVerticalWidth(50);
         graph.getGridLabelRenderer().setTextSize(30);
         graph.getGridLabelRenderer().setGridStyle(GridLabelRenderer.GridStyle.BOTH);
-        graph.getGridLabelRenderer().setHorizontalLabelsAngle(120);
+        //graph.getGridLabelRenderer().setHorizontalLabelsAngle(120);
         graph.getGridLabelRenderer().reloadStyles();
 
         // styling series
         seriesExactRSSI.setTitle("Exact RSSI");
         seriesExactRSSI.setColor(Color.RED);
         seriesExactRSSI.setDrawDataPoints(true);
-        seriesExactRSSI.setDataPointsRadius(6);
+        seriesExactRSSI.setDataPointsRadius(8);
         seriesExactRSSI.setThickness(5);
 
         seriesMovingRSSI.setTitle("Moving RSSI");
-        seriesMovingRSSI.setColor(Color.BLACK);
+        seriesMovingRSSI.setColor(Color.GREEN);
         seriesMovingRSSI.setDrawDataPoints(true);
-        seriesMovingRSSI.setDataPointsRadius(6);
+        seriesMovingRSSI.setDataPointsRadius(8);
         seriesMovingRSSI.setThickness(5);
 
         seriesKalmanRSSI.setTitle("Kalman RSSI");
         seriesKalmanRSSI.setColor(Color.BLUE);
         seriesKalmanRSSI.setDrawDataPoints(true);
-        seriesKalmanRSSI.setDataPointsRadius(6);
+        seriesKalmanRSSI.setDataPointsRadius(8);
         seriesKalmanRSSI.setThickness(5);
 
         // styling legend
         graph.getLegendRenderer().setVisible(true);
-        graph.getLegendRenderer().setTextSize(25);
+        graph.getLegendRenderer().setTextSize(35);
         graph.getLegendRenderer().setBackgroundColor(Color.argb(150, 50, 0, 0));
         graph.getLegendRenderer().setTextColor(Color.WHITE);
         //graph.getLegendRenderer().setAlign(LegendRenderer.LegendAlign.BOTTOM);
         //graph.getLegendRenderer().setMargin(10);
-        graph.getLegendRenderer().setFixedPosition(5, 635);
+        graph.getLegendRenderer().setFixedPosition(700, 1100);
 
         graph.addSeries(seriesExactRSSI);
         graph.addSeries(seriesMovingRSSI);
@@ -139,13 +153,18 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         graph.setTitle("RSSI Plot in dB");
         graph.setTitleTextSize(50);
 
-        // set manual X bounds
+        // set manual X,Y bounds
         graph.getViewport().setXAxisBoundsManual(true);
-        graph.getViewport().setMinX(0);
+        graph.getViewport().setMinX(10);
         graph.getViewport().setMaxX(20);
+        graph.getViewport().setYAxisBoundsManual(true);
+        graph.getViewport().setMinY(-100);
+        graph.getViewport().setMaxY(-20);
+
 
         // enable scrolling
         graph.getViewport().setScrollable(true);
+
 
 
 //        // use static labels for horizontal and vertical labels
@@ -173,6 +192,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                         TextView mtvdisplay1 = findViewById(R.id.tv_display1);
                         TextView mtvdisplay2 = findViewById(R.id.tv_display2);
                         TextView mtvdisplay3 = findViewById(R.id.tv_display3);
+                        TextView mtvdisplay4 = findViewById(R.id.tv_display4);
                         GraphView graph = (GraphView) findViewById(R.id.graph1);
 
                         mHandler.post(new Runnable() {
@@ -181,18 +201,28 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                                 mtvdisplay1.setText(String.format("Exact  RSSI:%sdB", String.valueOf(rssi_update)));
                                 mtvdisplay2.setText(String.format("Moving RSSI:%s", String.valueOf(mMovingAverage.next(rssi_update) + "dB")));
                                 mtvdisplay3.setText(String.format("Kalman RSSI:%s", String.valueOf((int) mKalmanFilter.applyFilter(rssi_update) + "dB")));
-
                                 x = x + 0.5;
-                                y_exact = -rssi_update;
-                                y_moving = -mMovingAverage.next(rssi_update);
-                                y_kalman = -(int) mKalmanFilter.applyFilter(rssi_update);
+                                y_exact = rssi_update;
+                                y_moving = mMovingAverage.next(rssi_update);
+                                y_kalman = mKalmanFilter.applyFilter(rssi_update);
 
-                                seriesExactRSSI.appendData(new DataPoint(x, y_exact), true, 1000);
-                                seriesMovingRSSI.appendData(new DataPoint(x, y_moving), true, 1000);
-                                seriesKalmanRSSI.appendData(new DataPoint(x, y_kalman), true, 1000);
-                                graph.addSeries(seriesExactRSSI);
-                                graph.addSeries(seriesMovingRSSI);
-                                graph.addSeries(seriesKalmanRSSI);
+                                mHandler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+
+                                        if ((y_exact)< -45)
+                                            mtvdisplay4.setText("Away");
+                                        else
+                                            mtvdisplay4.setText("Near");
+
+                                        seriesExactRSSI.appendData(new DataPoint(x, y_exact), true, 1000);
+                                        seriesMovingRSSI.appendData(new DataPoint(x, y_moving), true, 1000);
+                                        seriesKalmanRSSI.appendData(new DataPoint(x, y_kalman), true, 1000);
+                                        graph.addSeries(seriesExactRSSI);
+                                        graph.addSeries(seriesMovingRSSI);
+                                        graph.addSeries(seriesKalmanRSSI);
+                                    }
+                                });
                             }
                         });
                     }
@@ -244,6 +274,20 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             case R.id.button_scan:
                 showMessage("Scan Button");
                 Log.i(TAG, "Current Thread on button click " + Thread.currentThread().getId());
+                EditText etMovingWindow=findViewById(R.id.et_moving_window);
+                try {
+                    windowsize =Integer.parseInt(etMovingWindow.getText().toString()) ;
+                    if(windowsize>0)
+                        mMovingAverage.setWindowSize(windowsize);
+                    else
+                        mMovingAverage.setWindowSize(1);
+                }
+                catch (Exception e) {
+                    //sends actual error message to the log
+                    Log.e("ERROR", "ERROR IN CODE:" + e.toString());
+                    e.printStackTrace();
+                }
+
                 scanLeDevice(true);
                 break;
             case R.id.button_stop:
@@ -286,6 +330,10 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
             }
             sum -= list.poll();
             return (int) sum / windowSize;
+        }
+
+        public void setWindowSize(int window){
+            this.windowSize = window;
         }
     }
 
@@ -371,5 +419,15 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     ", cov=" + cov +
                     '}';
         }
+    }
+
+    //Hide the keyboard when touched outside the focused area.
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent ev) {
+        if (getCurrentFocus() != null) {
+            InputMethodManager imm = (InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
+            imm.hideSoftInputFromWindow(getCurrentFocus().getWindowToken(), 0);
+        }
+        return super.dispatchTouchEvent(ev);
     }
 }
