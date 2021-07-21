@@ -37,7 +37,7 @@
             android:layout_column="1"
             android:layout_gravity="center"
             android:text="Exact RSSI"
-            android:textColor="@color/black"
+            android:textColor="#FF0000"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -50,7 +50,7 @@
             android:layout_column="1"
             android:layout_gravity="center"
             android:text="Moving RSSI"
-            android:textColor="@color/black"
+            android:textColor="#19FF00"
             android:textSize="15sp"
             android:textStyle="bold" />
 
@@ -62,7 +62,7 @@
             android:layout_column="1"
             android:layout_gravity="center"
             android:text="Kalman RSSI"
-            android:textColor="@color/black"
+            android:textColor="#0442FA"
             android:textSize="15sp"
             android:textStyle="bold" />
 
